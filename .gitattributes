@@ -1,2 +1,4 @@
 *.pine text eol=lf
 *.md text eol=lf
+# The compile check is tooling, not the project: keep it out of the language bar.
+scripts/** linguist-detectable=false
