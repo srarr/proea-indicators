@@ -1,0 +1,113 @@
+//@version=6
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ProEA
+//
+// Order Blocks & FVG [ProEA]: order blocks and fair value gaps decided on closed candles, each printed with two numbers you
+// can check: its displacement (how far the move that made it ran, in ATR) and its volume ratio (the origin candle's
+// volume over its 20-candle average). An order block: a candle closes strictly beyond the last confirmed swing (15
+// candles on each side), and the last opposite-colour candle in the 20 before it is the block, its body. A fair value
+// gap: candle 1 to candle 3 with no overlap, at least 0.25 ATR(14) wide. A close strictly beyond a zone's far edge ends
+// it; a zone still live 500 candles after it formed stops. The two numbers describe a zone; they don't rate or predict it.
+indicator("Order Blocks & FVG [ProEA]", "OB & FVG", overlay = true, max_boxes_count = 200, max_bars_back = 200)
+
+int   swingLen = input.int(15, "Swing length (candles on each side)", minval = 1)
+int   obLook   = input.int(20, "Order block: candles to look back from the break", minval = 1, maxval = 100)
+int   atrLen   = input.int(14, "ATR length", minval = 1)
+float minGap   = input.float(0.25, "Smallest fair value gap, in ATR", minval = 0, step = 0.05)
+int   volLen   = input.int(20, "Volume average length", minval = 1)
+int   maxAge   = input.int(500, "A zone still live after this many candles stops", minval = 1)
+int   zoneCap  = input.int(60, "Most zones kept on the chart", minval = 1, maxval = 150)
+bool  showOb   = input.bool(true, "Order blocks")
+bool  showFvg  = input.bool(true, "Fair value gaps")
+bool  showNums = input.bool(true, "Print displacement and volume on each zone", tooltip = "Displacement, in ATR at the zone's birth: for an order block, from the block's far edge to the close that broke the swing; for a gap, the body of its middle candle. Volume: the origin candle's volume over its average (the block's candle, or the gap's middle candle). n/a when the symbol has no volume.")
+color bullCol  = input.color(color.new(#089981, 80), "Bullish zone")
+color bearCol  = input.color(color.new(#f23645, 80), "Bearish zone")
+color endCol   = input.color(color.new(color.gray, 88), "Ended zone")
+
+type Zone
+    box   bx
+    int   born
+    float lo
+    float hi
+    int   side // +1 bullish, -1 bearish
+    bool  live
+
+var array<Zone> zones = array.new<Zone>()
+var float swingHigh = na
+var float swingLow  = na
+
+float atr      = ta.atr(atrLen)
+float volAvg   = ta.sma(volume, volLen)
+float volRatio = volAvg > 0 ? volume / volAvg : na
+// a swing is confirmed swingLen candles after it, so these read closed candles only
+float ph       = ta.pivothigh(high, swingLen, swingLen)
+float pl       = ta.pivotlow(low, swingLen, swingLen)
+
+bool bullOb  = false
+bool bearOb  = false
+bool bullFvg = false
+bool bearFvg = false
+
+zoneText(string kind, float disp, float vr) =>
+    showNums ? kind + " · disp " + str.tostring(disp, "0.0") + " ATR · vol " + (na(vr) ? "n/a" : str.tostring(vr, "0.0") + "×") : ""
+
+addZone(int left, float lo, float hi, int side, string txt) =>
+    color c = side == 1 ? bullCol : bearCol
+    zones.push(Zone.new(box.new(left, hi, bar_index, lo, border_width = 0, bgcolor = c, text = txt, text_size = size.tiny, text_color = color.new(c, 0), text_halign = text.align_left), bar_index, lo, hi, side, true))
+    if zones.size() > zoneCap
+        zones.shift().bx.delete()
+
+if barstate.isconfirmed
+    // 1. the zones already on the chart, against this closed candle; a zone formed on this candle waits for a later one
+    for z in zones
+        if z.live
+            z.bx.set_right(bar_index)
+            if (z.side == 1 and close < z.lo) or (z.side == -1 and close > z.hi) or bar_index - z.born > maxAge
+                z.live := false
+                z.bx.set_bgcolor(endCol)
+                z.bx.set_text_color(color.gray)
+
+    // 2. a confirmed swing becomes the level to break
+    if not na(ph)
+        swingHigh := ph
+    if not na(pl)
+        swingLow := pl
+
+    // 3. the break: a close strictly beyond the last confirmed swing, which the break uses up; a wick is no break
+    int brk = 0
+    if not na(swingHigh) and close > swingHigh
+        brk := 1
+        swingHigh := na
+    else if not na(swingLow) and close < swingLow
+        brk := -1
+        swingLow := na
+
+    // 4. the order block: the last opposite-colour candle in the obLook before the break, its body
+    if brk != 0 and showOb and atr > 0
+        int k0 = 0
+        for k = 1 to obLook
+            if brk == 1 ? close[k] < open[k] : close[k] > open[k]
+                k0 := k
+                break
+        if k0 > 0
+            float hi = math.max(open[k0], close[k0])
+            float lo = math.min(open[k0], close[k0])
+            float disp = math.abs(close - (brk == 1 ? lo : hi)) / atr
+            addZone(bar_index - k0, lo, hi, brk, zoneText("OB", disp, volRatio[k0]))
+            bullOb := brk == 1
+            bearOb := brk == -1
+
+    // 5. the fair value gap, with this candle as candle 3
+    if showFvg and bar_index >= 2 and atr > 0
+        float need = minGap * atr
+        int side = low > high[2] and low - high[2] >= need ? 1 : high < low[2] and low[2] - high >= need ? -1 : 0
+        if side != 0
+            float disp = math.abs(close[1] - open[1]) / atr
+            addZone(bar_index - 2, side == 1 ? high[2] : high, side == 1 ? low : low[2], side, zoneText("FVG", disp, volRatio[1]))
+            bullFvg := side == 1
+            bearFvg := side == -1
+
+alertcondition(bullOb, "Bullish order block", "Bullish order block on {{ticker}} {{interval}}: a close broke the last swing high")
+alertcondition(bearOb, "Bearish order block", "Bearish order block on {{ticker}} {{interval}}: a close broke the last swing low")
+alertcondition(bullFvg, "Bullish fair value gap", "Bullish fair value gap on {{ticker}} {{interval}}")
+alertcondition(bearFvg, "Bearish fair value gap", "Bearish fair value gap on {{ticker}} {{interval}}")

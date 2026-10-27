@@ -1,0 +1,112 @@
+//@version=6
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ProEA
+//
+// Fractal Model [ProEA]: the Fractal Model's skeleton on your chart, decided on closed candles.
+// C1 is the last closed higher-timeframe candle. While the next one (C2) forms, a sweep of C1's high or low is marked,
+// then the CISD: the first chart close back through the open of the run of candles that made the swept extreme.
+// When C2 closes, a "C2" label marks a close strictly back inside C1's range after a sweep of one side only.
+indicator("Fractal Model [ProEA]", "Fractal Model", overlay = true, max_lines_count = 300, max_labels_count = 300)
+
+autoTf   = input.bool(true, "Automatic higher timeframe", tooltip = "1m → 15m, 5m → 1H, 15m → 4H, 1H → 1D, 4H → 1W, above → 1M")
+manualTf = input.timeframe("60", "Higher timeframe when automatic is off")
+showC1   = input.bool(true, "Show C1's high and low")
+upCol    = input.color(#089981, "Bullish")
+dnCol    = input.color(#f23645, "Bearish")
+
+int chartSec = timeframe.in_seconds()
+string autoPick = chartSec <= 60 ? "15" : chartSec <= 300 ? "60" : chartSec <= 900 ? "240" : chartSec <= 3600 ? "1D" : chartSec <= 14400 ? "1W" : "1M"
+string htf = autoTf ? autoPick : manualTf
+if barstate.isfirst and timeframe.in_seconds(htf) <= chartSec
+    runtime.error("Fractal Model: the higher timeframe must be above the chart's.")
+
+// Closed higher-timeframe candles only: an offset of [1] with lookahead on never reads a candle that is still forming.
+[pH1, pL1, pC1, pH2, pL2] = request.security(syminfo.tickerid, htf, [high[1], low[1], close[1], high[2], low[2]], lookahead = barmerge.lookahead_on)
+bool newHtf = ta.change(time(htf)) != 0
+
+// The latest run of down-closing and of up-closing chart candles: the open of each run's first candle.
+var float downRunOpen = na
+var int downRunBar = na
+var float upRunOpen = na
+var int upRunBar = na
+if close < open and not (close[1] < open[1])
+    downRunOpen := open
+    downRunBar := bar_index
+if close > open and not (close[1] > open[1])
+    upRunOpen := open
+    upRunBar := bar_index
+
+// The forming candle (the C2 candidate) against C1, the last closed one.
+var float sweepLow = na
+var float sweepHigh = na
+var float bullLine = na
+var int bullLineBar = na
+var float bearLine = na
+var int bearLineBar = na
+var bool bullCisd = false
+var bool bearCisd = false
+var line c1HighLine = na
+var line c1LowLine = na
+
+bool evSweepLow = false
+bool evSweepHigh = false
+bool evCisdBull = false
+bool evCisdBear = false
+bool evC2Bull = false
+bool evC2Bear = false
+
+if barstate.isconfirmed
+    if newHtf
+        // the candle that just closed is C2, the one before it C1
+        if not na(pL2) and pL1 < pL2 and pH1 <= pH2 and pC1 > pL2 and pC1 < pH2
+            evC2Bull := true
+            label.new(bar_index, pL1, "C2", style = label.style_label_up, color = upCol, textcolor = color.white, size = size.small, tooltip = "C2 swept C1's low and closed back inside C1")
+        if not na(pH2) and pH1 > pH2 and pL1 >= pL2 and pC1 < pH2 and pC1 > pL2
+            evC2Bear := true
+            label.new(bar_index, pH1, "C2", style = label.style_label_down, color = dnCol, textcolor = color.white, size = size.small, tooltip = "C2 swept C1's high and closed back inside C1")
+        sweepLow := na
+        sweepHigh := na
+        bullLine := na
+        bearLine := na
+        bullCisd := false
+        bearCisd := false
+        if showC1 and not na(pH1)
+            c1HighLine := line.new(bar_index, pH1, bar_index, pH1, color = color.new(color.gray, 30), style = line.style_dotted)
+            c1LowLine := line.new(bar_index, pL1, bar_index, pL1, color = color.new(color.gray, 30), style = line.style_dotted)
+    if showC1 and not na(c1HighLine)
+        line.set_x2(c1HighLine, bar_index)
+        line.set_x2(c1LowLine, bar_index)
+
+    // a sweep of C1's low; a deeper low moves the CISD line to the run that made it
+    if not na(pL1) and low < pL1 and (na(sweepLow) or low < sweepLow)
+        evSweepLow := na(sweepLow)
+        sweepLow := low
+        bullLine := downRunOpen
+        bullLineBar := downRunBar
+        bullCisd := false
+    if not na(pH1) and high > pH1 and (na(sweepHigh) or high > sweepHigh)
+        evSweepHigh := na(sweepHigh)
+        sweepHigh := high
+        bearLine := upRunOpen
+        bearLineBar := upRunBar
+        bearCisd := false
+
+    // the CISD: a close strictly beyond the run's open (a wick doesn't count)
+    if not na(bullLine) and not bullCisd and close > bullLine
+        bullCisd := true
+        evCisdBull := true
+        line.new(bullLineBar, bullLine, bar_index, bullLine, color = upCol, width = 2)
+        label.new(bar_index, bullLine, "CISD", style = label.style_label_left, color = color.new(upCol, 100), textcolor = upCol, size = size.small)
+    if not na(bearLine) and not bearCisd and close < bearLine
+        bearCisd := true
+        evCisdBear := true
+        line.new(bearLineBar, bearLine, bar_index, bearLine, color = dnCol, width = 2)
+        label.new(bar_index, bearLine, "CISD", style = label.style_label_left, color = color.new(dnCol, 100), textcolor = dnCol, size = size.small)
+
+plotshape(evSweepLow, "C1 low swept", shape.triangleup, location.belowbar, color.new(upCol, 40), size = size.tiny)
+plotshape(evSweepHigh, "C1 high swept", shape.triangledown, location.abovebar, color.new(dnCol, 40), size = size.tiny)
+
+alertcondition(evCisdBull, "Bullish CISD after C1's low was swept", "{{ticker}}: bullish CISD after C1's low was swept")
+alertcondition(evCisdBear, "Bearish CISD after C1's high was swept", "{{ticker}}: bearish CISD after C1's high was swept")
+alertcondition(evC2Bull, "C2 closed back inside C1 (bullish)", "{{ticker}}: C2 swept C1's low and closed back inside C1")
+alertcondition(evC2Bear, "C2 closed back inside C1 (bearish)", "{{ticker}}: C2 swept C1's high and closed back inside C1")

@@ -1,0 +1,23 @@
+//@version=6
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ProEA
+// Expected move lines: one and two standard deviations around the previous session's close, from the VIX (for the
+// S&P 500, SPY and ES) or from an implied volatility you type. What the options price, as a normal approximation:
+// about 68% of sessions inside one standard deviation, 95% inside two. Not a forecast.
+indicator("Expected Move Lines [ProEA]", "Expected Move", overlay = true)
+
+source  = input.string("VIX (S&P 500)", "Volatility from", options = ["VIX (S&P 500)", "Typed IV"])
+ivTyped = input.float(20.0, "Typed IV (%)", minval = 0.1, step = 0.5)
+days    = input.float(1.0, "Trading days ahead", minval = 0.1, step = 1)
+showTwo = input.bool(true, "Show 2 SD")
+
+// yesterday's finished values: offset a bar, then lookahead, so the lines don't repaint
+vix    = request.security("TVC:VIX", "D", close[1], lookahead = barmerge.lookahead_on)
+anchor = request.security(syminfo.tickerid, "D", close[1], lookahead = barmerge.lookahead_on)
+iv     = source == "Typed IV" ? ivTyped : vix
+move   = anchor * iv / 100 * math.sqrt(days / 252)
+
+plot(anchor + move, "+1 SD", color = color.teal, style = plot.style_linebr)
+plot(anchor - move, "-1 SD", color = color.teal, style = plot.style_linebr)
+plot(showTwo ? anchor + 2 * move : na, "+2 SD", color = color.new(color.teal, 60), style = plot.style_linebr)
+plot(showTwo ? anchor - 2 * move : na, "-2 SD", color = color.new(color.teal, 60), style = plot.style_linebr)

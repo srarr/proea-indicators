@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: How to add a Pine Script to TradingView
+    url: https://proea.app/en/blog/how-to-add-pine-script-to-tradingview?utm_source=github&utm_medium=issue_template&utm_campaign=proea_indicators
+    about: Step-by-step install, and fixes for the common paste errors.
+  - name: ProEA support (desks and purchases)
+    url: https://proea.app/en/support?utm_source=github&utm_medium=issue_template&utm_campaign=proea_indicators
+    about: Questions about the paid ProEA desks go here, not in this repository's issues.

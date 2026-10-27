@@ -1,0 +1,50 @@
+name: Bug report
+description: An indicator drew something its rule says it shouldn't (or missed something it should).
+labels: [bug]
+body:
+  - type: dropdown
+    id: indicator
+    attributes:
+      label: Indicator
+      options:
+        - Fractal Model
+        - IFVG
+        - Order Blocks & FVG
+        - Gold Session Pools
+        - Prop Drawdown Lines
+        - ETF Levels on Futures
+        - Expected Move Lines
+    validations:
+      required: true
+  - type: input
+    id: symbol
+    attributes:
+      label: Symbol and exchange
+      placeholder: OANDA:XAUUSD
+    validations:
+      required: true
+  - type: input
+    id: timeframe
+    attributes:
+      label: Timeframe
+      placeholder: 15m
+    validations:
+      required: true
+  - type: input
+    id: when
+    attributes:
+      label: Candle date and time, with your chart's time zone
+      placeholder: 2026-10-23 08:45, UTC-4 (New York)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What it drew, and what the README's rule says it should draw
+      description: Quote the line of the rule you're comparing against. A screenshot helps.
+    validations:
+      required: true
+  - type: input
+    id: settings
+    attributes:
+      label: Settings changed from the defaults (if any)

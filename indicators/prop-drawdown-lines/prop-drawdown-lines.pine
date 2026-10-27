@@ -1,0 +1,84 @@
+//@version=6
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ProEA
+//
+// Prop Drawdown Lines [ProEA]: where your prop firm's daily loss floor and drawdown floor sit, in dollars, and, for one
+// open position, as prices on the chart. Every number comes from what you type: a Pine script can't read your account.
+// Daily floor = today's starting balance − the daily loss limit. Drawdown floor: static = account size − max drawdown;
+// trailing = the highest balance you type − max drawdown, never under the static floor and never above the lock. The
+// higher of the two binds. A price line is where the position's loss takes the balance before the trade to that floor;
+// touching it counts as a breach. The trailing floor doesn't rise while the trade runs: type the new high yourself.
+indicator("Prop Drawdown Lines [ProEA]", "Prop DD Lines", overlay = true)
+
+float  size     = input.float(50000, "Account size ($)", minval = 1, group = "Account")
+float  maxDd    = input.float(2000, "Max drawdown ($)", minval = 0, group = "Account")
+string ddType   = input.string("Static", "Drawdown type", options = ["Static", "Trailing"], group = "Account", tooltip = "Trailing: type the highest balance your firm trails from, the highest close for an end-of-day trail, the highest equity for an intraday one.")
+float  highest  = input.float(0, "Highest balance so far ($, 0 = account size)", minval = 0, group = "Account")
+float  lock     = input.float(0, "Trailing floor stops at ($, 0 = no lock)", minval = 0, group = "Account")
+float  dailyDd  = input.float(1000, "Daily loss limit ($, 0 = none)", minval = 0, group = "Account")
+float  dayStart = input.float(0, "Today's starting balance ($, 0 = account size)", minval = 0, group = "Account")
+float  balance  = input.float(0, "Balance before this trade ($, 0 = today's start)", minval = 0, group = "Account")
+string side     = input.string("None", "Open position", options = ["None", "Long", "Short"], group = "Position")
+float  entry    = input.float(0, "Entry price", minval = 0, group = "Position")
+float  qty      = input.float(1, "Size: contracts, lots or shares", minval = 0, group = "Position")
+float  perPoint = input.float(50, "Dollars per 1.0 move in price, per unit", minval = 0, group = "Position", tooltip = "For example ES 50, MES 5, NQ 20, MNQ 2. Check your broker's contract size.")
+float  warnAt   = input.float(250, "Warn when the room left is under ($)", minval = 0, group = "Alerts")
+color  dayCol   = input.color(#f7a600, "Daily floor", group = "Style")
+color  ddCol    = input.color(#f23645, "Drawdown floor", group = "Style")
+
+float start       = dayStart > 0 ? dayStart : size
+float before      = balance > 0 ? balance : start
+float staticFloor = size - maxDd
+float trail       = math.max(staticFloor, math.max(highest > 0 ? highest : size, size) - maxDd)
+float ddFloor     = ddType == "Static" ? staticFloor : lock > 0 ? math.max(staticFloor, math.min(trail, lock)) : trail
+float dayFloor    = dailyDd > 0 ? start - dailyDd : na
+float binding     = na(dayFloor) ? ddFloor : math.max(ddFloor, dayFloor)
+
+int   dir      = side == "Long" ? 1 : side == "Short" ? -1 : 0
+float perPrice = qty * perPoint
+bool  hasPos   = dir != 0 and entry > 0 and perPrice > 0
+// equity at the close, and at the bar's worst price for the position
+float equity   = hasPos ? before + (close - entry) * dir * perPrice : before
+float worstEq  = hasPos ? before + ((dir == 1 ? low : high) - entry) * dir * perPrice : before
+float dayPrice = hasPos and not na(dayFloor) ? entry - dir * (before - dayFloor) / perPrice : na
+float ddPrice  = hasPos ? entry - dir * (before - ddFloor) / perPrice : na
+
+money(float v) => (v < 0 ? "−$" : "$") + str.tostring(math.abs(v), "#,##0")
+
+var line  dayLine = na
+var line  ddLine  = na
+var label dayLab  = na
+var label ddLab   = na
+var table panel   = table.new(position.top_right, 2, 7, bgcolor = color.new(#131722, 10), border_width = 1, border_color = color.new(#363a45, 0))
+
+if barstate.islast
+    line.delete(dayLine)
+    line.delete(ddLine)
+    label.delete(dayLab)
+    label.delete(ddLab)
+    if not na(dayPrice)
+        dayLine := line.new(bar_index - 1, dayPrice, bar_index, dayPrice, extend = extend.both, color = dayCol, style = line.style_dashed, width = 2)
+        dayLab  := label.new(bar_index + 3, dayPrice, "Daily floor " + money(dayFloor), style = label.style_label_left, color = color.new(dayCol, 80), textcolor = dayCol, size = size.small)
+    if not na(ddPrice)
+        ddLine := line.new(bar_index - 1, ddPrice, bar_index, ddPrice, extend = extend.both, color = ddCol, width = 2)
+        ddLab  := label.new(bar_index + 3, ddPrice, ddType + " floor " + money(ddFloor), style = label.style_label_left, color = color.new(ddCol, 80), textcolor = ddCol, size = size.small)
+    table.cell(panel, 0, 0, hasPos ? "Equity now" : "Balance", text_color = color.gray, text_size = size.small, text_halign = text.align_left)
+    table.cell(panel, 1, 0, money(equity), text_color = color.white, text_size = size.small, text_halign = text.align_right)
+    table.cell(panel, 0, 1, "Daily floor", text_color = color.gray, text_size = size.small, text_halign = text.align_left)
+    table.cell(panel, 1, 1, na(dayFloor) ? "none" : money(dayFloor), text_color = dayCol, text_size = size.small, text_halign = text.align_right)
+    table.cell(panel, 0, 2, "Room to it", text_color = color.gray, text_size = size.small, text_halign = text.align_left)
+    table.cell(panel, 1, 2, na(dayFloor) ? "—" : money(equity - dayFloor), text_color = color.white, text_size = size.small, text_halign = text.align_right)
+    table.cell(panel, 0, 3, ddType + " floor", text_color = color.gray, text_size = size.small, text_halign = text.align_left)
+    table.cell(panel, 1, 3, money(ddFloor), text_color = ddCol, text_size = size.small, text_halign = text.align_right)
+    table.cell(panel, 0, 4, "Room to it", text_color = color.gray, text_size = size.small, text_halign = text.align_left)
+    table.cell(panel, 1, 4, money(equity - ddFloor), text_color = color.white, text_size = size.small, text_halign = text.align_right)
+    table.cell(panel, 0, 5, "Binding", text_color = color.gray, text_size = size.small, text_halign = text.align_left)
+    table.cell(panel, 1, 5, binding == ddFloor ? ddType + " floor" : "Daily floor", text_color = color.white, text_size = size.small, text_halign = text.align_right)
+    table.cell(panel, 0, 6, "From the numbers you typed", text_color = color.gray, text_size = size.tiny, text_halign = text.align_left)
+    table.merge_cells(panel, 0, 6, 1, 6)
+
+// each alert fires on the bar where its condition starts, not again on every bar it stays true
+bool touched = hasPos and worstEq <= binding
+bool near    = hasPos and not touched and worstEq - binding < warnAt
+alertcondition(touched and not touched[1], "Floor touched", "{{ticker}}: the position touched your binding prop floor, by the numbers you typed")
+alertcondition(near and not near[1], "Floor near", "{{ticker}}: the room to your binding prop floor is under your warning amount")

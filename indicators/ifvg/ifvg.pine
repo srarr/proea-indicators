@@ -1,0 +1,64 @@
+//@version=6
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ProEA
+//
+// IFVG [ProEA]: the inverse fair value gap (IFVG), decided on closed candles, by the rule IFVG Desk 1.2.0 uses.
+// A gap is candle 1 to candle 3 with no overlap, at least 0.05 ATR(14) wide. A later candle closing strictly beyond
+// its far edge flips it into an IFVG; a wick, or a close on the edge, is no flip. A close strictly beyond the other
+// edge ends it; a gap still live 180 candles after it formed expires. Each gap flips once.
+indicator("IFVG [ProEA]", "IFVG", overlay = true, max_boxes_count = 200, max_labels_count = 200)
+
+int   atrLen  = input.int(14, "ATR length", minval = 1)
+float minGap  = input.float(0.05, "Smallest gap to keep, in ATR", minval = 0, step = 0.05)
+int   maxAge  = input.int(180, "A gap still live after this many candles expires", minval = 1)
+int   zoneCap = input.int(40, "Most gaps kept on the chart", minval = 1, maxval = 100)
+color gapCol  = input.color(color.new(color.gray, 85), "A gap waiting for its flip")
+color bullCol = input.color(color.new(#089981, 75), "Bullish IFVG: a bearish gap closed above its top")
+color bearCol = input.color(color.new(#f23645, 75), "Bearish IFVG: a bullish gap closed below its bottom")
+
+type Zone
+    box   bx
+    int   born
+    float lo
+    float hi
+    int   side  // +1 bullish gap, -1 bearish gap
+    int   state // 0 waiting for the flip, 1 inverted, 2 ended or expired after its flip, 3 expired before one
+
+var array<Zone> zones = array.new<Zone>()
+float atr = ta.atr(atrLen)
+bool bullFlip = false
+bool bearFlip = false
+
+if barstate.isconfirmed
+    // 1. the gaps already on the chart, against this closed candle; a gap formed on this candle waits for a later one
+    for z in zones
+        if z.state < 2
+            if bar_index - z.born > maxAge
+                z.state := z.state == 1 ? 2 : 3
+            else if z.state == 0
+                if z.side == 1 and close < z.lo
+                    z.state := 1
+                    bearFlip := true
+                    z.bx.set_bgcolor(bearCol)
+                    label.new(bar_index, high, "Bear IFVG", color = color.new(color.white, 100), textcolor = color.new(bearCol, 0), style = label.style_label_down, size = size.small)
+                else if z.side == -1 and close > z.hi
+                    z.state := 1
+                    bullFlip := true
+                    z.bx.set_bgcolor(bullCol)
+                    label.new(bar_index, low, "Bull IFVG", color = color.new(color.white, 100), textcolor = color.new(bullCol, 0), style = label.style_label_up, size = size.small)
+            else if (z.side == 1 and close > z.hi) or (z.side == -1 and close < z.lo)
+                z.state := 2
+            z.bx.set_right(bar_index)
+
+    // 2. a new gap, with this candle as candle 3
+    if bar_index >= 2 and not na(atr)
+        float need = minGap * atr
+        if low > high[2] and low - high[2] >= need
+            zones.push(Zone.new(box.new(bar_index - 2, low, bar_index, high[2], border_width = 0, bgcolor = gapCol), bar_index, high[2], low, 1, 0))
+        else if high < low[2] and low[2] - high >= need
+            zones.push(Zone.new(box.new(bar_index - 2, low[2], bar_index, high, border_width = 0, bgcolor = gapCol), bar_index, high, low[2], -1, 0))
+        if zones.size() > zoneCap
+            zones.shift().bx.delete()
+
+alertcondition(bullFlip, "Bullish IFVG", "Bullish IFVG on {{ticker}} {{interval}}: a bearish gap closed above its top")
+alertcondition(bearFlip, "Bearish IFVG", "Bearish IFVG on {{ticker}} {{interval}}: a bullish gap closed below its bottom")

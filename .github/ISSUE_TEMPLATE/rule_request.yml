@@ -1,0 +1,22 @@
+name: Rule change or new indicator
+description: Propose a change to a rule, or a new open-source indicator, with its source.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: proposal
+    attributes:
+      label: The rule, exactly
+      description: Write it so two people would mark the same candles. Strict or not on every comparison?
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Source
+      description: The concept creator's own words, a paper, or a published rule, with a link and date.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters to traders using the indicator

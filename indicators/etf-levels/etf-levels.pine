@@ -1,0 +1,31 @@
+//@version=6
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ProEA
+// ETF and index levels on the futures chart. Converts levels you type (in SPY, QQQ, SPX, NDX…) onto the chart's
+// futures contract at the current ratio (ETF) or basis (index), on the contract's tick. A snapshot: the relation drifts
+// through the day and jumps at the roll.
+indicator("ETF Levels on Futures [ProEA]", "ETF Levels", overlay = true, max_lines_count = 50, max_labels_count = 50)
+
+src     = input.symbol("AMEX:SPY", "Levels are in")
+method  = input.string("Ratio (ETF)", "Convert by", options = ["Ratio (ETF)", "Basis (index)"])
+levels  = input.string("770, 765, 760", "Levels, comma-separated")
+lineCol = input.color(color.orange, "Color")
+
+srcClose = request.security(src, timeframe.period, close, lookahead = barmerge.lookahead_off)
+
+var array<line>  drawn = array.new<line>()
+var array<label> tags  = array.new<label>()
+
+if barstate.islast and not na(srcClose) and srcClose > 0
+    for l in drawn
+        line.delete(l)
+    for t in tags
+        label.delete(t)
+    array.clear(drawn)
+    array.clear(tags)
+    for part in str.split(levels, ",")
+        lvl = str.tonumber(str.replace_all(part, " ", ""))
+        if not na(lvl)
+            y = math.round_to_mintick(method == "Ratio (ETF)" ? lvl * close / srcClose : lvl + close - srcClose)
+            array.push(drawn, line.new(bar_index - 1, y, bar_index, y, extend = extend.both, color = lineCol))
+            array.push(tags, label.new(bar_index, y, str.tostring(lvl) + " → " + str.tostring(y), style = label.style_label_left, color = color.new(lineCol, 85), textcolor = lineCol))

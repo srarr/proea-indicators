@@ -1,0 +1,164 @@
+//@version=6
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ProEA
+//
+// Gold Session Pools [ProEA]: gold's three liquidity pools and their sweeps, on New York time. The pools are yesterday's
+// high and low, the Asia range (candles opening 20:00 to 24:00) and the London range (02:00 to 05:00); each range is a
+// pool once it has ended, and a pool is fresh until any candle trades through it. A raid is a closed candle in the
+// London (02:00 to 05:00) or New York (07:00 to 11:00) window that trades at least the depth, in ATR, through a fresh
+// pool on one side only, measured from the outermost pool it takes; a later candle that takes a further pool moves the
+// raid out to it. It is SWEPT when a close comes back inside on the raid candle or within the next few candles, and
+// HELD when it doesn't. Candles while spot gold is closed (Friday 17:00 to Sunday 18:00 and the daily 17:00 to 18:00
+// break) are skipped, the ATR included. Intraday charts of 1 hour or less. Marks only: no entries, no stops, no plans.
+indicator("Gold Session Pools [ProEA]", "Gold Pools", overlay = true, max_labels_count = 300)
+
+float depthAtr = input.float(0.05, "Sweep depth, ATR beyond the level", minval = 0, step = 0.05, group = "Sweep")
+int   reclaim  = input.int(3, "Close back inside within, candles after the raid", minval = 0, maxval = 20, group = "Sweep")
+bool  winLon   = input.bool(true, "London window 02:00–05:00", group = "Windows, New York time")
+bool  winNy    = input.bool(true, "New York window 07:00–11:00", group = "Windows, New York time")
+bool  usePd    = input.bool(true, "Yesterday's high and low", group = "Pools")
+bool  useAsia  = input.bool(true, "Asia high and low · 20:00–24:00", group = "Pools")
+bool  useLon   = input.bool(true, "London high and low · 02:00–05:00", group = "Pools")
+bool  shadeWin = input.bool(true, "Shade the windows", group = "Style")
+color hiCol    = input.color(#f23645, "Highs", group = "Style")
+color loCol    = input.color(#089981, "Lows", group = "Style")
+
+string TZ = "America/New_York"
+int  hm  = hour(time, TZ) * 60 + minute(time, TZ)
+int  dow = dayofweek(time, TZ)
+// spot gold trades Sunday 18:00 to Friday 17:00 New York, with a daily break from 17:00 to 18:00
+bool shut = (hm >= 1020 and hm < 1080) or dow == dayofweek.saturday or (dow == dayofweek.friday and hm >= 1020) or (dow == dayofweek.sunday and hm < 1080)
+// a trading day opens at 18:00: its id is the New York date six hours later
+int  t6    = time + 6 * 3600 * 1000
+int  dayId = year(t6, TZ) * 10000 + month(t6, TZ) * 100 + dayofmonth(t6, TZ)
+bool inWin = not shut and ((winLon and hm >= 120 and hm < 300) or (winNy and hm >= 420 and hm < 660))
+// the windows and ranges are set in minutes of the New York day: an intraday chart of 1 hour or less
+bool avail = chart.is_standard and timeframe.isintraday and timeframe.in_seconds() <= 3600
+
+var int lastDay = 0
+var float dayHi = na
+var float dayLo = na
+var float pdh = na
+var float pdl = na
+// ranges while they form
+var float asHi = na
+var float asLo = na
+var float lnHi = na
+var float lnLo = na
+var float asPoolHi = na
+var float asPoolLo = na
+var float lnPoolHi = na
+var float lnPoolLo = na
+var bool pdhOn = false
+var bool pdlOn = false
+var bool asHiOn = false
+var bool asLoOn = false
+var bool lnHiOn = false
+var bool lnLoOn = false
+// ATR(14) over open-market candles only: the average of the first 14 true ranges, then Wilder's smoothing
+var int   n     = 0
+var int   trN   = 0
+var float trSum = 0.0
+var float atr   = na
+var float prevC = na
+// the raid watched: its side (1 high, -1 low), its level, its candle (counted in open-market candles) and its extreme
+var int   rDir = 0
+var float rLvl = na
+var int   rN   = 0
+var int   rBar = na
+var float rExt = na
+
+bool sweptHigh = false
+bool sweptLow  = false
+
+if barstate.isconfirmed and avail and not shut
+    n += 1
+    float tr = na(prevC) ? high - low : math.max(high - low, math.abs(high - prevC), math.abs(low - prevC))
+    if trN < 14
+        trSum += tr
+        trN += 1
+        if trN == 14
+            atr := trSum / 14
+    else
+        atr := (tr + 13 * atr) / 14
+    prevC := close
+
+    // a new trading day: yesterday's range becomes the prior-day pool; the session ranges start over
+    if dayId != lastDay
+        if lastDay != 0 and usePd
+            pdh := dayHi, pdl := dayLo, pdhOn := true, pdlOn := true
+        dayHi := na, dayLo := na
+        asHi := na, asLo := na, lnHi := na, lnLo := na
+        asPoolHi := na, asPoolLo := na, lnPoolHi := na, lnPoolLo := na
+        asHiOn := false, asLoOn := false, lnHiOn := false, lnLoOn := false
+        lastDay := dayId
+    // a range is a pool from the first candle after it ends (00:00 for Asia, 05:00 for London)
+    if useAsia and not na(asHi) and na(asPoolHi) and hm < 1080
+        asPoolHi := asHi, asPoolLo := asLo, asHiOn := true, asLoOn := true
+    if useLon and not na(lnHi) and na(lnPoolHi) and hm >= 300 and hm < 1080
+        lnPoolHi := lnHi, lnPoolLo := lnLo, lnHiOn := true, lnLoOn := true
+
+    // every fresh pool this candle trades through is used up; on each side, the outermost one taken
+    float outHi = na
+    if pdhOn and high > pdh
+        outHi := pdh, pdhOn := false
+    if asHiOn and high > asPoolHi
+        outHi := na(outHi) ? asPoolHi : math.max(outHi, asPoolHi), asHiOn := false
+    if lnHiOn and high > lnPoolHi
+        outHi := na(outHi) ? lnPoolHi : math.max(outHi, lnPoolHi), lnHiOn := false
+    float outLo = na
+    if pdlOn and low < pdl
+        outLo := pdl, pdlOn := false
+    if asLoOn and low < asPoolLo
+        outLo := na(outLo) ? asPoolLo : math.min(outLo, asPoolLo), asLoOn := false
+    if lnLoOn and low < lnPoolLo
+        outLo := na(outLo) ? lnPoolLo : math.min(outLo, lnPoolLo), lnLoOn := false
+
+    if rDir != 0
+        // a raid waiting for its close back: a further pool on its side moves the level out to it
+        rExt := rDir == 1 ? math.max(rExt, high) : math.min(rExt, low)
+        float further = rDir == 1 ? outHi : outLo
+        if not na(further) and (rDir == 1 ? further > rLvl : further < rLvl)
+            rLvl := further
+        if rDir == 1 ? close < rLvl : close > rLvl
+            sweptHigh := rDir == 1
+            sweptLow  := rDir == -1
+            label.new(rBar, rExt, "SWEPT", style = rDir == 1 ? label.style_label_down : label.style_label_up, color = rDir == 1 ? hiCol : loCol, textcolor = color.white, size = size.small)
+            rDir := 0
+        else if n - rN >= reclaim
+            label.new(rBar, rExt, "HELD", style = rDir == 1 ? label.style_label_down : label.style_label_up, color = color.new(color.gray, 20), textcolor = color.white, size = size.small)
+            rDir := 0
+    else if inWin and not na(atr) and (not na(outHi)) != (not na(outLo))
+        // a raid: one side only, at least the depth beyond the outermost pool it takes
+        int   d     = na(outHi) ? -1 : 1
+        float outer = d == 1 ? outHi : outLo
+        float depth = d == 1 ? high - outer : outer - low
+        if depth >= depthAtr * atr
+            rDir := d, rLvl := outer, rN := n, rBar := bar_index, rExt := d == 1 ? high : low
+            if d == 1 ? close < rLvl : close > rLvl
+                sweptHigh := d == 1
+                sweptLow  := d == -1
+                label.new(rBar, rExt, "SWEPT", style = d == 1 ? label.style_label_down : label.style_label_up, color = d == 1 ? hiCol : loCol, textcolor = color.white, size = size.small)
+                rDir := 0
+
+    // this candle into today's range and the session ranges forming
+    dayHi := na(dayHi) ? high : math.max(dayHi, high)
+    dayLo := na(dayLo) ? low : math.min(dayLo, low)
+    if hm >= 1200
+        asHi := na(asHi) ? high : math.max(asHi, high)
+        asLo := na(asLo) ? low : math.min(asLo, low)
+    if hm >= 120 and hm < 300
+        lnHi := na(lnHi) ? high : math.max(lnHi, high)
+        lnLo := na(lnLo) ? low : math.min(lnLo, low)
+
+// the fresh pools, each drawn until a candle trades through it
+plot(pdhOn ? pdh : na, "Yesterday's high", hiCol, 1, plot.style_linebr)
+plot(pdlOn ? pdl : na, "Yesterday's low", loCol, 1, plot.style_linebr)
+plot(asHiOn ? asPoolHi : na, "Asia high", color.new(hiCol, 35), 1, plot.style_linebr)
+plot(asLoOn ? asPoolLo : na, "Asia low", color.new(loCol, 35), 1, plot.style_linebr)
+plot(lnHiOn ? lnPoolHi : na, "London high", color.new(hiCol, 60), 2, plot.style_linebr)
+plot(lnLoOn ? lnPoolLo : na, "London low", color.new(loCol, 60), 2, plot.style_linebr)
+bgcolor(shadeWin and inWin and avail ? color.new(color.gray, 93) : na, title = "Windows")
+
+alertcondition(sweptHigh, "Swept high", "Gold Session Pools: a high pool was swept (a close back below it)")
+alertcondition(sweptLow, "Swept low", "Gold Session Pools: a low pool was swept (a close back above it)")
