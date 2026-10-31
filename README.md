@@ -32,11 +32,16 @@
 ## Install in 60 seconds
 
 1. Open the indicator's folder and copy the `.pine` file. On GitHub, use **Copy raw file**.
-2. On TradingView, open a chart and the **Pine Editor** (bottom panel), then **Open → New indicator**.
+2. On TradingView, open a full chart and the **Pine Editor** (the pine-tree icon on the right toolbar; it moved there
+   from the bottom panel in 2025), then **Open → New indicator**.
 3. Select everything in the editor, paste, then **Save** and **Add to chart**.
 
 That's all. There are no libraries to import and nothing to install. A step-by-step with screenshots and the common
 paste errors: [how to add a Pine Script to TradingView][how-to-add].
+
+Downloaded the `.pine` file instead? Drop it into the [Pine file opener][opener]: it reads the file in your browser
+(nothing is uploaded), flags what Pine can't read, such as curly quotes or a chat's ``` lines, and copies the script in
+one tap.
 
 ## How every script decides
 
@@ -149,6 +154,7 @@ source (the paper, the creator's own words, or the desk's published rule). See [
 not financial advice, and past behaviour of any rule doesn't predict its future results.
 
 [how-to-add]: https://proea.app/en/blog/how-to-add-pine-script-to-tradingview?utm_source=github&utm_medium=readme&utm_campaign=proea_indicators
+[opener]: https://proea.app/en/blog/open-pine-file?utm_source=github&utm_medium=readme&utm_campaign=proea_indicators
 [repaint]: https://proea.app/en/blog/how-to-tell-if-an-indicator-repaints?utm_source=github&utm_medium=readme&utm_campaign=proea_indicators
 [fm-desk]: https://proea.app/en/pine-library/fractal-model-desk?utm_source=github&utm_medium=readme&utm_campaign=proea_indicators
 [ifvg-desk]: https://proea.app/en/pine-library/ifvg-desk?utm_source=github&utm_medium=readme&utm_campaign=proea_indicators
