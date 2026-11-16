@@ -12,7 +12,7 @@
 
 <p align="center">
   <b>Seven TradingView indicators. Every rule written down, structure decided on closed candles, no lookahead.</b><br>
-  The open core of the <a href="https://proea.app/?utm_source=github&utm_medium=readme&utm_campaign=proea_indicators">ProEA</a> desks: Fractal Model (CRT + CISD), IFVG, order blocks & FVG, gold's session liquidity, prop firm drawdown floors, ETF levels on futures and expected move.
+  The open core of the <a href="https://proea.app/?utm_source=github&utm_medium=readme&utm_campaign=proea_indicators">ProEA</a> desks: the TTrades / ICT Fractal Model (CRT + CISD), IFVG, order blocks & FVG, gold's session liquidity, prop firm drawdown floors, ETF levels on futures and expected move.
 </p>
 
 ---
@@ -21,7 +21,7 @@
 
 | | Indicator | What it marks | Alerts |
 |:-:|---|---|---|
-| <a href="indicators/fractal-model"><img src="assets/fractal-model.png" width="220" alt="Fractal Model: CRT + CISD"></a> | **[Fractal Model: CRT + CISD](indicators/fractal-model)** | C1's range from the last closed higher-timeframe candle, a one-sided sweep of it, the CISD, and C2's close back inside C1 (candle range theory). | Bullish / bearish CISD, C2 back inside C1 (both sides) |
+| <a href="indicators/fractal-model"><img src="assets/fractal-model.png" width="220" alt="Fractal Model: CRT + CISD"></a> | **[Fractal Model: CRT + CISD](indicators/fractal-model)** | The TTrades / ICT Fractal Model skeleton: C1's range from the last closed higher-timeframe candle, a one-sided sweep of it, the CISD, and C2's close back inside C1 (candle range theory). Not Bill Williams fractals. | Bullish / bearish CISD, C2 back inside C1 (both sides) |
 | <a href="indicators/ifvg"><img src="assets/ifvg.png" width="220" alt="IFVG: Inverse FVG on a Close"></a> | **[IFVG: Inverse FVG on a Close](indicators/ifvg)** | Fair value gaps that a later candle closes through, flipped into inverse FVGs by one strict rule. A wick through the edge is no flip. | Bullish IFVG, bearish IFVG |
 | <a href="indicators/order-blocks-fvg"><img src="assets/order-blocks-fvg.png" width="220" alt="Order Blocks & FVG"></a> | **[Order Blocks & FVG](indicators/order-blocks-fvg)** | Smart money concepts order blocks and fair value gaps, each printed with its displacement (in ATR) and its origin candle's volume ratio. | Bullish / bearish order block, bullish / bearish FVG |
 | <a href="indicators/gold-session-pools"><img src="assets/gold-session-pools.png" width="220" alt="Gold Session Pools"></a> | **[Gold Session Pools](indicators/gold-session-pools)** | XAUUSD liquidity: yesterday's, Asia's and London's highs and lows on New York time, and every raid of them in the London or New York window marked SWEPT or HELD. | Swept high, swept low |

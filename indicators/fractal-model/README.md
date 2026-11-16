@@ -4,6 +4,8 @@
 
 TTrades' Fractal Model skeleton on your chart, decided on closed candles. Its C2 rule is candle range theory (CRT): one higher-timeframe candle's range, swept on one side, closed back inside.
 
+This is the ICT / TTrades **Fractal Model** (higher-timeframe candle, sweep, CISD, lower-timeframe confirmation), not Bill Williams' fractals (the 5-candle swing arrows); for those, TradingView's built-in Williams Fractals indicator draws them.
+
 ## What it draws
 
 - **C1:** the last closed higher-timeframe candle. Its high and low are dotted while the next candle (C2) forms.
